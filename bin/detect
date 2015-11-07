@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ -f "$1/dub.sdl" ] || [ -f "$1/dub.json" ]; then
+    echo "D"
+    exit 0
+else
+    exit 1
+fi
