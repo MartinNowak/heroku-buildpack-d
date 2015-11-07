@@ -132,6 +132,9 @@ if [ ! -d "$HOME/.dub" ]; then
     ln -sf "$CACHE_DIR/dub_cache" "$HOME/.dub"
 fi
 
+# use ld.gold
+ln -sf /usr/bin/ld.gold $CACHE_DIR/$compiler/$binpath/ld
+
 cd "$BUILD_DIR"
 echo "-----> Building application with dub"
 
