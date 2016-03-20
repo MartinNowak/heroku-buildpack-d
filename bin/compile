@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # bin/compile <build-dir> <cache-dir> <env-dir>
 
-set -eo pipefail
+set -ueo pipefail
 
-BUILD_DIR=$1
-CACHE_DIR=$2
+BUILD_DIR="$1"
+CACHE_DIR="$2"
 
 compiler=dmd
 if [ -f "$BUILD_DIR/.d-compiler" ]; then
@@ -18,114 +18,11 @@ indent() { sed 's|^|       |'; }
 CURL_USER_AGENT="Heroku Buildpack D $(curl --version | head -n 1)"
 curl() { command curl -fsSL --retry 3 -A "${CURL_USER_AGENT}" "$@"; }
 
-install_compiler() {
-    mkdir -p "$CACHE_DIR"
-    tmp=$(mktemp -d -p "$CACHE_DIR")
-
-    # dmd-2.065, dmd-2.068.0, dmd-2.068.1-b1
-    if [[ $1 =~ ^dmd-2\.([0-9]{3})(\.[0-9])?(-.*)?$ ]]; then
-        basename="dmd.2.${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
-        version="2.${BASH_REMATCH[1]}"
-
-        if [[ $version > "2.064z" ]]; then
-            basename="$basename.$os"
-            version="$version${BASH_REMATCH[2]}"
-        fi
-
-        if [[ $version > "2.068.0z" ]]; then
-            arch="tar.xz"
-        else
-            arch="zip"
-        fi
-
-        if [ ! -z "${BASH_REMATCH[3]}" ]; then # pre-release
-            url="http://downloads.dlang.org/pre-releases/2.x/$version/$basename.$arch"
-        else
-            url="http://downloads.dlang.org/releases/2.x/$version/$basename.$arch"
-        fi
-
-        folders=$(echo dmd2/{linux/{bin,lib}64,src/{druntime,phobos}}/'*')
-        if [[ $url =~ \.tar\.xz$ ]]; then
-            curl "$url" | tar -C "$tmp" -Jxf - --wildcards $folders
-        else
-            curl "$url" -o dmd.zip
-            unzip -q -d "$tmp" dmd.zip $folders
-            rm dmd.zip
-        fi
-        mv "$tmp" "$CACHE_DIR/$1"
-
-    # ldc-0.12.1 or ldc-0.15.0-alpha1
-    elif [[ $1 =~ ^ldc-([0-9]+\.[0-9]+\.[0-9]+(-.*)?)$ ]]; then
-        ver=${BASH_REMATCH[1]}
-        url="https://github.com/ldc-developers/ldc/releases/download/v$ver/ldc2-$ver-$os-x86_64.tar.xz"
-        curl "$url" | tar --strip-components=1 -C "$tmp" -Jxf -
-        mv "$tmp" "$CACHE_DIR/$1"
-
-    # gdc-4.8.2, gdc-4.9.0-alpha1, gdc-5.2, or gdc-5.2-alpha1
-    elif [[ $1 =~ ^gdc-([0-9]+\.[0-9]+(\.[0-9]+)?(-.*)?)$ ]]; then
-        gdc_host_triplet=x86_64-linux-gnu
-        url="http://gdcproject.org/downloads/binaries/$gdc_host_triplet/${BASH_REMATCH[0]}.tar.xz"
-
-        curl "$url" | tar --strip-components=1 -C "$tmp" -Jxf -
-        curl https://raw.githubusercontent.com/D-Programming-GDC/GDMD/master/dmd-script -o "$tmp/bin/gdmd"
-        chmod +x "$tmp/bin/gdmd"
-        mv "$tmp" "$CACHE_DIR/$1"
-    else
-        echo "        Unknown compiler '$1'"
-        rmdir "$tmp"
-        exit 1
-    fi
-}
-
-case $compiler in
-    dmd)
-        compiler="dmd-$(curl http://ftp.digitalmars.com/LATEST)"
-        ;;
-    ldc)
-        compiler="ldc-$(curl https://ldc-developers.github.io/LATEST)"
-        ;;
-    gdc)
-        compiler="gdc-$(curl http://gdcproject.org/downloads/LATEST)"
-        ;;
-esac
-
-if [ -d "$CACHE_DIR/$compiler" ]; then
-    echo "-----> Using $compiler"
-else
-    echo "-----> Installing $compiler"
-    install_compiler $compiler
-fi
-
-case $compiler in
-    dmd*)
-        binpath=dmd2/linux/bin64; libpath=dmd2/linux/lib64;
-        export DC=dmd
-        export DMD=dmd
-        ;;
-
-    ldc*)
-        binpath=bin; libpath=lib;
-        export DC=ldc2
-        export DMD=ldmd2
-        ;;
-    gdc*)
-        binpath=bin; libpath=lib;
-        export DC=gdc
-        export DMD=gdmd
-        ;;
-esac
-export PATH="$CACHE_DIR/$compiler/$binpath:$PATH"
-export LD_LIBRARY_PATH="$CACHE_DIR/$compiler/$libpath:$LD_LIBRARY_PATH"
-
-dub=dub-$(curl http://code.dlang.org/download/LATEST)
-if [ -d "$CACHE_DIR/$dub" ]; then
-    echo "-----> Using $dub"
-else
-    echo "-----> Installing $dub"
-    mkdir -p "$CACHE_DIR/$dub"
-    curl "http://code.dlang.org/files/$dub-$os-x86_64.tar.gz" | tar -C "$CACHE_DIR/$dub" -zxf -
-fi
-export PATH="$CACHE_DIR/$dub:$PATH"
+echo "-----> Using $compiler"
+activate_path=$(curl -fsS https://dlang.org/install.sh | SHELL=bash bash -s $compiler --path "$CACHE_DIR" 2>&1 | sed -n 's|.*`source \(.*\)`.*|\1|p')
+set +u
+source "${activate_path//\~/$HOME}"
+set -u
 
 if [ ! -d "$HOME/.dub" ]; then
     mkdir -p "$CACHE_DIR/dub_cache"
@@ -133,7 +30,11 @@ if [ ! -d "$HOME/.dub" ]; then
 fi
 
 # use ld.gold
-ln -sf /usr/bin/ld.gold $CACHE_DIR/$compiler/$binpath/ld
+if [ ! -d "$CACHE_DIR/linker" ]; then
+    mkdir -p "$CACHE_DIR/linker"
+    ln -sf /usr/bin/ld.gold "$CACHE_DIR/linker/ld"
+fi
+export PATH="$CACHE_DIR/linker:$PATH"
 
 cd "$BUILD_DIR"
 echo "-----> Building application with dub"
@@ -144,7 +45,7 @@ dub clean
 if [ ! -f Procfile ]; then
     echo "-----> Generating default Procfile"
     path=$(dub describe --data=target-path --data-list)
-    path=${path#$BUILD_DIR}
+    path=${path#"$BUILD_DIR"}
     bin=$(dub describe --data=target-name --data-list)
     echo "web: .$path$bin --port \$PORT" | indent
     cat > Procfile <<-EOF
