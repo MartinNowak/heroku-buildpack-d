@@ -20,6 +20,20 @@ Example usage:
     -----> Using dub-0.9.24
     -----> Building application with dub
 
+# Usage with Vibe.d
+Add `Procfile` to your project and edit content.
+
+`web: ./your-app-name`
+
+Also reconfigure vibe HTTPServerSettings. For example;
+
+```
+auto settings = new HTTPServerSettings;
+settings.port = to!ushort(environment.get("PORT", "8080"));
+settings.bindAddresses = ["0.0.0.0", "127.0.0.1"];
+...
+```
+
 # Selecting a D compiler
 
 By default the latest dmd compiler is used. It is also possible to use gdc or
