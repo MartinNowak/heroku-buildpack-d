@@ -18,11 +18,14 @@ indent() { sed 's|^|       |'; }
 CURL_USER_AGENT="Heroku Buildpack D $(curl --version | head -n 1)"
 curl() { command curl -fsSL --retry 3 -A "${CURL_USER_AGENT}" "$@"; }
 
-echo "-----> Using $compiler"
 activate_path="$(curl -fsS https://dlang.org/install.sh | SHELL=bash bash -s $compiler --path "$CACHE_DIR" --activate)"
 set +u
 source "$activate_path"
 set -u
+echo "-----> Using $compiler"
+$DC --version | indent
+echo '-----> Using dub'
+dub --version | indent
 
 if [ ! -d "$HOME/.dub" ]; then
     mkdir -p "$CACHE_DIR/dub_cache"
@@ -35,6 +38,12 @@ if [ ! -d "$CACHE_DIR/linker" ]; then
     ln -sf /usr/bin/ld.gold "$CACHE_DIR/linker/ld"
 fi
 export PATH="$CACHE_DIR/linker:$PATH"
+if [[ $compiler = dmd* ]]; then
+    echo '-----> Using cc'
+    ${CC:-cc} -v 2>&1 | indent
+fi
+echo '-----> Using ld.gold'
+${LD:-ld} -v | indent
 
 cd "$BUILD_DIR"
 echo "-----> Building application with dub"
