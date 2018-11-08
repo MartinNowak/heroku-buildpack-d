@@ -37,6 +37,7 @@ curl() { command curl -fsSL --retry 3 -A "${CURL_USER_AGENT}" "$@"; }
 
 activate_path="$(curl -fsS https://dlang.org/install.sh | SHELL=bash bash -s "$DC" --path "$CACHE_DIR" --activate)"
 set +u
+# shellcheck source=/dev/null
 source "$activate_path"
 set -u
 echo "-----> Using $DC"
@@ -65,7 +66,7 @@ ${LD:-ld} -v | indent
 cd "$BUILD_DIR"
 echo "-----> Building application with dub"
 
-dub build -b release --compiler=$DC 2>&1 | indent
+dub build -b release --compiler="$DC" 2>&1 | indent
 dub clean
 
 if [ ! -f Procfile ]; then

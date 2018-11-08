@@ -1,0 +1,8 @@
+language: c
+script: shellcheck bin/detect bin/compile
+addons:
+  apt:
+    packages: [shellcheck]
+branches:
+  only:
+    - master
