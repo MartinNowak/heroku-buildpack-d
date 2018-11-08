@@ -5,24 +5,41 @@ set -ueo pipefail
 
 BUILD_DIR="$1"
 CACHE_DIR="$2"
+ENV_DIR="$3"
 
-compiler=dmd
+DC=dmd
 if [ -f "$BUILD_DIR/.d-compiler" ]; then
-    compiler=$(cat "$BUILD_DIR/.d-compiler")
+    DC=$(cat "$BUILD_DIR/.d-compiler")
 fi
 
-os=linux
+# https://devcenter.heroku.com/articles/buildpack-api#bin-compile
+export_env_dir() {
+    env_dir=$1
+    if [ ! -d "$env_dir" ]; then
+        return;
+    fi
+    shopt -s nullglob
+    for env_file in "$env_dir"/*; do
+        # http://mywiki.wooledge.org/BashPitfalls#line-60
+        [ -e "$env_file" ] || continue
+        var="$(basename "$env_file")"
+        export "$var=$(cat "$env_file")"
+    done
+    shopt -u nullglob
+}
+
+export_env_dir "$ENV_DIR"
 
 indent() { sed 's|^|       |'; }
 
 CURL_USER_AGENT="Heroku Buildpack D $(curl --version | head -n 1)"
 curl() { command curl -fsSL --retry 3 -A "${CURL_USER_AGENT}" "$@"; }
 
-activate_path="$(curl -fsS https://dlang.org/install.sh | SHELL=bash bash -s $compiler --path "$CACHE_DIR" --activate)"
+activate_path="$(curl -fsS https://dlang.org/install.sh | SHELL=bash bash -s "$DC" --path "$CACHE_DIR" --activate)"
 set +u
 source "$activate_path"
 set -u
-echo "-----> Using $compiler"
+echo "-----> Using $DC"
 $DC --version | indent
 echo '-----> Using dub'
 dub --version | indent
@@ -32,17 +49,17 @@ if [ ! -d "$HOME/.dub" ]; then
     ln -sf "$CACHE_DIR/dub_cache" "$HOME/.dub"
 fi
 
-# use ld.gold
+# prefer ld.gold
 if [ ! -d "$CACHE_DIR/linker" ]; then
     mkdir -p "$CACHE_DIR/linker"
     ln -sf /usr/bin/ld.gold "$CACHE_DIR/linker/ld"
 fi
 export PATH="$CACHE_DIR/linker:$PATH"
-if [[ $compiler = dmd* ]]; then
+if [[ $DC = dmd* ]]; then
     echo '-----> Using cc'
     ${CC:-cc} -v 2>&1 | indent
 fi
-echo '-----> Using ld.gold'
+echo '-----> Using ld'
 ${LD:-ld} -v | indent
 
 cd "$BUILD_DIR"
