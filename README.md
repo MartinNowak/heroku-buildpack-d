@@ -4,7 +4,7 @@ A heroku buildpack for the D programing language using dub to build applications
 
 # Quickstart
 
-Pablo De Napoli has written a [boilerplate repo](https://github.com/pdenapo/d-lang-heroku-example) with a simple deploy to Heroku button.
+Pablo De Napoli has written a [boilerplate repo](https://github.com/pdenapo/d-lang-heroku-example) with a simple Deploy to Heroku button.
 
 # Usage
 
